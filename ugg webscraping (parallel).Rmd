@@ -1,0 +1,94 @@
+---
+title: "u.gg webscraping"
+author: "Bram van Smoorenburg"
+date: "27 November 2019"
+output: html_document
+---
+
+https://u.gg/lol/tier-list/?role=support&queueType=normal_blind_5x5
+
+```{r}
+library(rvest)
+library(parallel)
+```
+
+```{r}
+ncores=6
+```
+
+split vector
+```{r}
+splitvec=function(vec,n) {
+  if (length(vec)<n) {
+    stop("vector not long enough, length:",length(vec))
+  }
+  out=round(seq(0,length(vec),length.out = n+1))
+  return(lapply(2:(n+1),function(y){vec[(out[y-1]+1):out[y]]}))
+}
+```
+
+champion list
+```{r}
+namelist=c("aatrox","ahri","akali","alistar","amumu","anivia","annie","ashe","aurelionsol","azir","blitzcrank","brand","braum","caitlyn","camille","cassiopeia","chogath","corki","darius","diana","drmundo","draven","ekko","elise","evelynn","ezreal","fiddlesticks","fiora","fizz","galio","gangplank","garen","gnar","gragas","hecarim","heimerdinger","illaoi","irelia","ivern","janna","jarvaniv","jax","jayce","jhin","jinx","kaisa","kalista","karma","karthus","kassadin","katarina","kayle","kayn","kennen","khazix","kindred","kled","kogmaw","leblanc","leesin","leona","lissandra","lucian","lulu","lux","malphite","malzahar","maokai","masteryi","missfortune","mordekaiser","morgana","nami","nasus","nautilus","neeko","nidalee","nocturne","nunu","olaf","orianna","ornn","pantheon","poppy","pyke","qiyana","quinn","rakan","rammus","reksai","renekton","rengar","riven","rumble","ryze","sejuani","senna","shaco","shen","shyvana","singed","sion","sivir","skarner","sona","swain","sylas","syndra","tahmkench","taliyah","talon","taric","teemo","thresh","tristana","trundle","tryndamere","twistedfate","twitch","udyr","urgot","varus","vayne","veigar","velkoz","vi","viktor","vladimir","volibear","warwick","wukong","xayah","xerath","xinzhao","yasuo","yorick","yuumi","zac","zed","ziggs","zilean","zoe","zyra")
+splnames=splitvec(namelist,ncores)
+```
+
+function
+```{r}
+uggfunc=function(namevec) {
+  library(rvest)
+  champtabl=data.frame(name=NA,topbplayrate=NA,jglbplayrate=NA,midbplayrate=NA,botbplayrate=NA,supbplayrate=NA,topbwinrate=NA,jglbwinrate=NA,midbwinrate=NA,botbwinrate=NA,supbwinrate=NA,toprplayrate=NA,jglrplayrate=NA,midrplayrate=NA,botrplayrate=NA,suprplayrate=NA,toprwinrate=NA,jglrwinrate=NA,midrwinrate=NA,botrwinrate=NA,suprwinrate=NA)[-1,]
+  for (i in namevec) {
+    url=paste0("https://u.gg/lol/champions/",i,"/build/",collapse="") #?queueType=normal_blind_5x5
+    page=read_html(url,encoding = "ISO-8859-1")
+    page2=html_text(page)
+    roles=strsplit(page2,"world_silver_")[[1]][2:6] #world_silver_ or overall_
+    roles=roles[c(4,1,5,3,2)]
+    
+    corebuild=lapply(roles,function(x){strsplit(x,"rec_skills")[[1]][1]})
+corebuild=lapply(corebuild,function(x){strsplit(x,"rec_core_items")[[1]][2]})
+corebuild=lapply(corebuild,function(x){strsplit(x,"\"matches\":")[[1]][2]})
+cb1=as.numeric(lapply(corebuild,function(x){strsplit(x,",")[[1]][1]}))
+cb2=lapply(corebuild,function(x){strsplit(x,"win_rate\":")[[1]][2]})
+cb2=as.numeric(lapply(cb2,function(x){strsplit(x,",")[[1]][1]}))
+
+runes=lapply(roles,function(x){strsplit(x,"active_perks")[[1]][1]})
+runes=lapply(runes,function(x){strsplit(x,"rec_runes")[[1]][2]})
+runes=lapply(runes,function(x){strsplit(x,"\"matches\":")[[1]][2]})
+r1=as.numeric(lapply(runes,function(x){strsplit(x,",")[[1]][1]}))
+r2=lapply(runes,function(x){strsplit(x,"win_rate\":")[[1]][2]})
+r2=as.numeric(lapply(r2,function(x){strsplit(x,",")[[1]][1]}))
+
+champtabl=rbind(champtabl,c(NA,cb1,cb2,r1,r2))
+champtabl[nrow(champtabl),1]=i
+  }
+  colnames(champtabl)=c("names","topiplayrate","jgliplayrate","midiplayrate","botiplayrate","supiplayrate","topiwinrate","jgliwinrate","midiwinrate","botiwinrate","supiwinrate","toprplayrate","jglrplayrate","midrplayrate","botrplayrate","suprplayrate","toprwinrate","jglrwinrate","midrwinrate","botrwinrate","suprwinrate")
+rownames(champtabl)=champtabl[,1]
+champtabl=champtabl[,-1]
+return(champtabl)
+}
+```
+
+running function
+```{r}
+clu=makeCluster(ncores)
+tabl=parLapply(clu,splnames,uggfunc)
+stopCluster(clu)
+tabl=do.call(rbind,tabl)
+```
+
+role tables
+```{r}
+threshold=1e3
+itabltop=tabl[tabl$topiplayrate>=threshold,]
+itabljgl=tabl[tabl$jgliplayrate>=threshold,]
+itablmid=tabl[tabl$midiplayrate>=threshold,]
+itablbot=tabl[tabl$botiplayrate>=threshold,]
+itablsup=tabl[tabl$supiplayrate>=threshold,]
+
+rtabltop=tabl[tabl$toprplayrate>=threshold,]
+rtabljgl=tabl[tabl$jglrplayrate>=threshold,]
+rtablmid=tabl[tabl$midrplayrate>=threshold,]
+rtablbot=tabl[tabl$botrplayrate>=threshold,]
+rtablsup=tabl[tabl$suprplayrate>=threshold,]
+```

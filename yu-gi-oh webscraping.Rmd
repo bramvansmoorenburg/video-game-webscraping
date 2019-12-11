@@ -1,0 +1,217 @@
+---
+title: "serebiinet webscraping"
+author: "Bram van Smoorenburg"
+date: "1 August 2019"
+output: html_document
+---
+
+https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=2&cid=4007
+
+from 4007 to 14902
+
+```{r}
+library(rvest)
+```
+
+```{r}
+no=6989
+url=paste0("https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=2&cid=",no,collapse="")
+#guess_encoding(url)
+page=read_html(url,encoding = "ISO-8859-2")
+page2=html_nodes(page,"table")
+```
+
+blue eyes white dragon:   4007
+black luster soldier:     4370
+maha vailo:               4499
+pot of greed:             4844
+winged dragon of ra:      5000
+ring of destruction:      5005
+dark master - zorc:       5782
+elemental hero air neos:  6989
+gaia knight, the force of earth:  7697
+stardust dragon:          7734
+number 39: utopia:        9576
+gem-knight pearl:         9601
+foucault's cannon:        11211
+odd-eyes pendulum dragon: 11213
+supreme king Z-ARC:       12953
+firewall dragon:          13082
+gaia saber, the lightning shadow: 13090
+
+name
+```{r}
+name=as.character(html_nodes(page,"td")[[1]])
+name=strsplit(name,"alt=")[[1]][2]
+name=strsplit(name," title=")[[1]][1]
+name=strsplit(name,NULL)[[1]]
+name=paste0(name[-c(1,length(name))],collapse="")
+if (name=="Search\">\n</td") {
+  stop("hammertime")
+}
+```
+
+load attributes
+```{r}
+page3=list()
+for (i in 1:length(page2)) {page3[[i]]=try(html_table(page2[[i]],fill=TRUE))}
+bla=page3[[2]]
+bla2=apply(bla,c(1,2),function(x){gsub("\t","",x)})
+bla2=apply(bla2,c(1,2),function(x){gsub("\r","",x)})
+bla2=apply(bla2,c(1,2),function(x){gsub("\n","",x)})
+```
+
+
+
+write card data
+```{r}
+card=data.frame(dats=NULL)
+if (nrow(bla2)==2) {
+  tmp=strsplit(bla2[1,1]," Spell")[[1]]
+  if (tmp!=bla2[1,1]) {
+    cardtype="Spell"
+  } else {
+    cardtype="Trap"
+    tmp=strsplit(bla2[1,1]," Trap")[[1]]
+  }
+  attribute=strsplit(tmp,"Icon")[[1]][2]
+  extra=0
+  type=NA
+  level=NA
+  ATK=NA
+  DEF=NA
+  effect=strsplit(bla2[2,1],"Card Text")[[1]][2]
+  pendulumeffect=NA
+  pendulumscale=NA
+  linkarrows=NA
+} else if (nrow(bla)==7) {
+  tmp=strsplit(bla2[1,2],"Level")[[1]]
+  if (length(tmp)==1) {
+    tmp=strsplit(bla2[1,2],"Rank")[[1]]
+    if (length(tmp)==1) {
+      tmp=strsplit(bla2[1,2],"Link")
+    }
+  }
+  level=as.numeric(tmp[2])
+  cardtype=strsplit(bla2[5,1],"Card Type ")[[1]][2]
+  extra=ifelse(gsub("Synchro","",cardtype)!=cardtype|gsub("Fusion","",cardtype)!=cardtype|gsub("Xyz","",cardtype)!=cardtype|gsub("Link","",cardtype)!=cardtype,1,0)
+  attribute=strsplit(bla2[1,1],"Attribute")[[1]][2]
+  type=strsplit(bla2[4,1],"Monster Type")[[1]][2]
+  ATK=as.numeric(strsplit(bla2[6,1],"ATK")[[1]][2])
+  DEF=as.numeric(strsplit(bla2[6,2],"DEF")[[1]][2])
+  effect=strsplit(bla2[7,1],"Card Text")[[1]][2]
+  pendulumeffect=strsplit(bla2[3,1],"Pendulum Effect")[[1]][2]
+  pendulumscale=as.numeric(strsplit(bla2[2,1],"Pendulum Scale")[[1]][2])
+  linkarrows=NA
+} else {
+  tmp=strsplit(bla2[1,2],"Level")[[1]]
+  if (length(tmp)==1) {
+    tmp=strsplit(bla2[1,2],"Rank")[[1]]
+    if (length(tmp)==1) {
+      tmp=strsplit(bla2[1,2],"Link")
+    }
+  }
+  level=as.numeric(tmp[2])
+  cardtype=strsplit(bla2[3,1],"Card Type ")[[1]][2]
+  extra=ifelse(gsub("Synchro","",cardtype)!=cardtype|gsub("Fusion","",cardtype)!=cardtype|gsub("Xyz","",cardtype)!=cardtype|gsub("Link","",cardtype)!=cardtype,1,0)
+  attribute=strsplit(bla2[1,1],"Attribute")[[1]][2]
+  type=strsplit(bla2[2,1],"Monster Type")[[1]][2]
+  ATK=as.numeric(strsplit(bla2[4,1],"ATK")[[1]][2])
+  DEF=as.numeric(strsplit(bla2[4,2],"DEF")[[1]][2])
+  effect=strsplit(bla2[5,1],"Card Text")[[1]][2]
+  pendulumeffect=NA
+  pendulumscale=NA
+  linkarrows=NA
+}
+data.frame(extra,name,cardtype,attribute,type,level,ATK,DEF,effect,pendulumeffect,pendulumscale,linkarrows)
+```
+
+loop
+```{r}
+cards=data.frame(Name=NA,Cardtype=NA,Attribute=NA,Type=NA,Level=NA,ATK=NA,DEF=NA,Effect=NA,Pendulumeffect=NA,Pendulumscale=NA,Linkarrows=NA)[-1,]
+for (i in 4007:14902) {
+  url=paste0("https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=2&cid=",i,collapse="")
+  page=try(read_html(url,encoding = "ISO-8859-2"))
+  if (all(class(page)=="try-error")) {
+    page=read_html(url,encoding = "ISO-8859-2")
+  }
+  name=as.character(html_nodes(page,"td")[[1]])
+  name=strsplit(name,"alt=")[[1]][2]
+  name=strsplit(name," title=")[[1]][1]
+  name=strsplit(name,NULL)[[1]]
+  name=paste0(name[-c(1,length(name))],collapse="")
+  if (name=="Search\">\n</td") {
+    next
+  }
+  
+  page2=html_nodes(page,"table")
+  page3=list()
+  for (s in 1:length(page2)) {page3[[s]]=try(html_table(page2[[s]],fill=TRUE))}
+  bla=page3[[2]]
+  bla2=apply(bla,c(1,2),function(x){gsub("\t","",x)})
+  bla2=apply(bla2,c(1,2),function(x){gsub("\r","",x)})
+  bla2=apply(bla2,c(1,2),function(x){gsub("\n","",x)})
+  
+  if (nrow(bla2)==2) {
+    tmp=strsplit(bla2[1,1]," Spell")[[1]]
+    if (tmp!=bla2[1,1]) {
+      cardtype="Spell"
+    } else {
+      cardtype="Trap"
+      tmp=strsplit(bla2[1,1]," Trap")[[1]]
+    }
+    attribute=strsplit(tmp,"Icon")[[1]][2]
+    extra=0
+    type=NA
+    level=NA
+    ATK=NA
+    DEF=NA
+    effect=strsplit(bla2[2,1],"Card Text")[[1]][2]
+    pendulumeffect=NA
+    pendulumscale=NA
+    linkarrows=NA
+  } else if (nrow(bla)==7) {
+    tmp=strsplit(bla2[1,2],"Level")[[1]]
+    if (length(tmp)==1) {
+      tmp=strsplit(bla2[1,2],"Rank")[[1]]
+      if (length(tmp)==1) {
+        tmp=strsplit(bla2[1,2],"Link")
+      }
+    }
+    level=as.numeric(tmp[2])
+    cardtype=strsplit(bla2[5,1],"Card Type ")[[1]][2]
+    extra=ifelse(gsub("Synchro","",cardtype)!=cardtype|gsub("Fusion","",cardtype)!=cardtype|gsub("Xyz","",cardtype)!=cardtype|gsub("Link","",cardtype)!=cardtype,1,0)
+    attribute=strsplit(bla2[1,1],"Attribute")[[1]][2]
+    type=strsplit(bla2[4,1],"Monster Type")[[1]][2]
+    ATK=as.numeric(strsplit(bla2[6,1],"ATK")[[1]][2])
+    DEF=as.numeric(strsplit(bla2[6,2],"DEF")[[1]][2])
+    effect=strsplit(bla2[7,1],"Card Text")[[1]][2]
+    pendulumeffect=strsplit(bla2[3,1],"Pendulum Effect")[[1]][2]
+    pendulumscale=as.numeric(strsplit(bla2[2,1],"Pendulum Scale")[[1]][2])
+    linkarrows=NA
+  } else {
+    tmp=strsplit(bla2[1,2],"Level")[[1]]
+    if (length(tmp)==1) {
+      tmp=strsplit(bla2[1,2],"Rank")[[1]]
+      if (length(tmp)==1) {
+        tmp=strsplit(bla2[1,2],"Link")[[1]]
+      }
+    }
+    level=as.numeric(tmp[2])
+    cardtype=strsplit(bla2[3,1],"Card Type ")[[1]][2]
+    extra=ifelse(gsub("Synchro","",cardtype)!=cardtype|gsub("Fusion","",cardtype)!=cardtype|gsub("Xyz","",cardtype)!=cardtype|gsub("Link","",cardtype)!=cardtype,1,0)
+    attribute=strsplit(bla2[1,1],"Attribute")[[1]][2]
+    type=strsplit(bla2[2,1],"Monster Type")[[1]][2]
+    ATK=suppressWarnings(as.numeric(strsplit(bla2[4,1],"ATK")[[1]][2]))
+    DEF=suppressWarnings(as.numeric(strsplit(bla2[4,2],"DEF")[[1]][2]))
+    effect=strsplit(bla2[5,1],"Card Text")[[1]][2]
+    pendulumeffect=NA
+    pendulumscale=NA
+    linkarrows=NA
+  }
+  
+  cards=rbind(cards,data.frame(extra,name,cardtype,attribute,type,level,ATK,DEF,effect,pendulumeffect,pendulumscale,linkarrows))
+  
+  print(c(i,name))
+}
+```

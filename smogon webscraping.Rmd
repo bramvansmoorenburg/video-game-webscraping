@@ -1,0 +1,243 @@
+---
+title: "smogon webscraping"
+author: "Bram van Smoorenburg"
+date: "2 December 2019"
+output: html_document
+---
+
+https://www.smogon.com/dex/dp/pokemon/pikachu/
+
+```{r}
+library(rvest)
+library(openxlsx)
+library(stringr)
+```
+
+```{r}
+namelist=read.xlsx("Pokemon.xlsx")
+namelist=tolower(namelist[,3])
+namelist[c(29,32,83,122,387,388,389,416,417,418,444,493,499)]=c("nidoran-f","nidoran-f","farfetchd","mr-mime","deoxys-attack","deoxys-defense","deoxys-speed","wormadam","wormadam-sandy","wormadam-trash","mime-jr","giratina-origin","shaymin-sky")
+namelist=c(namelist,"arceus-bug","arceus-dark","arceus-dragon","arceus-electric","arceus-fighting","arceus-fire","arceus-flying","arceus-ghost","arceus-grass","arceus-ground","arceus-ice","arceus-poison","arceus-psychic","arceus-rock","arceus-steel","arceus-water")
+```
+
+```{r}
+pkmn="kakuna"
+url=paste0("https://www.smogon.com/dex/dp/pokemon/",pkmn,"/",collapse = "")
+#guess_encoding(url)
+bla=read_html(url,encoding = "ISO-8859-1")
+```
+
+```{r}
+bla2=html_text(bla)
+bla3=strsplit(bla2,"\"format\":",fixed=TRUE)[[1]][-1]
+bla4=lapply(bla3,function(x){strsplit(x,",\"abilities\":",fixed=TRUE)[[1]][-1]})
+```
+
+formats
+```{r}
+formats=unname(sapply(bla3,function(x){strsplit(x,",")[[1]][1]}))
+formats=gsub("\"","",formats,fixed = TRUE)
+if (any(formats=="LC")) {
+  bla4=bla4[-which(formats=="LC")]
+  formats=formats[-which(formats=="LC")]
+}
+if (any(formats=="Uber")&&length(formats)>1) {
+  bla4=bla4[-which(formats=="Uber")]
+  formats=formats[-which(formats=="Uber")]
+}
+```
+
+stats
+```{r}
+abilities=lapply(bla4,function(z){lapply(z,function(x){strsplit(x,",\"items\"",fixed=TRUE)[[1]]})})
+abilities=lapply(abilities,function(z){lapply(z,function(x){strsplit(x,",",fixed=TRUE)[[1]]})})
+abilities=lapply(abilities,function(z){lapply(z,function(x){gsub("\"","",gsub("[","",gsub("]","",x,fixed=TRUE),fixed=TRUE),fixed=TRUE)})})
+
+items=lapply(bla4,function(z){lapply(z,function(x){strsplit(x,",\"items\":",fixed=TRUE)[[1]][2]})})
+items=lapply(items,function(z){lapply(z,function(x){strsplit(x,",\"moveslots\":",fixed=TRUE)[[1]][1]})})
+items=lapply(items,function(z){lapply(z,function(x){strsplit(x,",",fixed=TRUE)[[1]]})})
+items=lapply(items,function(z){lapply(z,function(x){gsub("\"","",gsub("[","",gsub("]","",x,fixed=TRUE),fixed=TRUE),fixed=TRUE)})})
+
+moves=lapply(bla4,function(z){lapply(z,function(x){strsplit(x,",\"moveslots\":",fixed=TRUE)[[1]][2]})})
+moves=lapply(moves,function(z){lapply(z,function(x){strsplit(x,",\"evconfigs\":",fixed=TRUE)[[1]][1]})})
+moves=lapply(moves,function(z){lapply(z,function(x){strsplit(x,"\"],[\"",fixed=TRUE)[[1]]})})
+moves=lapply(moves,function(z){lapply(z,function(x){gsub("\"","",gsub("[[","",gsub("]]","",x,fixed=TRUE),fixed=TRUE),fixed=TRUE)})})
+
+evs=lapply(bla4,function(z){lapply(z,function(x){strsplit(x,",\"evconfigs\":",fixed=TRUE)[[1]][2]})})
+evs=lapply(evs,function(z){lapply(z,function(x){strsplit(x,",\"ivconfigs\":",fixed=TRUE)[[1]][1]})})
+evs=lapply(evs,function(z){lapply(z,function(x){strsplit(x,",\"",fixed=TRUE)[[1]]})})
+evs=lapply(evs,function(z){lapply(z,function(x){gsub("\"","",gsub("[{","",gsub("}]","",x,fixed=TRUE),fixed=TRUE),fixed=TRUE)})})
+evs=lapply(evs,function(z){lapply(z,function(x){unname(sapply(x,function(y){as.numeric(strsplit(y,":")[[1]][2])}))})})
+
+ivs=lapply(bla4,function(z){lapply(z,function(x){strsplit(x,",\"ivconfigs\":",fixed=TRUE)[[1]][2]})})
+ivs=lapply(ivs,function(z){lapply(z,function(x){strsplit(x,",\"natures\":",fixed=TRUE)[[1]][1]})})
+ivs=lapply(ivs,function(z){lapply(z,function(x){strsplit(x,",\"",fixed=TRUE)[[1]]})})
+ivs=lapply(ivs,function(z){lapply(z,function(x){gsub("\"","",gsub("[{","",gsub("}]","",x,fixed=TRUE),fixed=TRUE),fixed=TRUE)})})
+ivs=lapply(ivs,function(z){lapply(z,function(x){unname(sapply(x,function(y){as.numeric(strsplit(y,":")[[1]][2])}))})})
+
+natures=lapply(bla4,function(z){lapply(z,function(x){strsplit(x,",\"natures\":",fixed=TRUE)[[1]][2]})})
+natures=lapply(natures,function(z){lapply(z,function(x){strsplit(x,"}],\"credits\":",fixed=TRUE)[[1]][1]})})
+natures=lapply(natures,function(z){lapply(z,function(x){strsplit(x,"]},",fixed=TRUE)[[1]][1]})})
+natures=lapply(natures,function(z){lapply(z,function(x){strsplit(x,",",fixed=TRUE)[[1]]})})
+natures=lapply(natures,function(z){lapply(z,function(x){gsub("\"","",gsub("[","",gsub("]","",x,fixed=TRUE),fixed=TRUE),fixed=TRUE)})})
+```
+
+builds
+```{r}
+buildsability=lapply(abilities,lengths)
+buildsmoves=lapply(moves,function(x){sapply(x,function(y){prod(sapply(y,function(z){str_count(z,",")+1}))})})
+buildsmoves2=lapply(moves,function(x){sapply(x,function(y){tmp=length(y);tmp2=unname(sapply(y,function(z){str_count(z,",")+1}));return(c(tmp2,rep(NA,4-tmp)))})})
+buildsitem=lapply(items,lengths)
+buildsnature=lapply(natures,lengths)
+buildsize=lapply(natures,lengths)
+for (i in 1:length(buildsability)) {
+  buildsize[[i]]=buildsability[[i]]*buildsmoves[[i]]*buildsitem[[i]]*buildsnature[[i]]
+}
+builds=natures
+for (i in 1:length(builds)) {
+  for (j in 1:length(builds[[i]])) {
+    builds[[i]][[j]]=as.data.frame(matrix(NA,nrow=buildsize[[i]][j],ncol=19))
+    builds[[i]][[j]][,1]=rep(abilities[[i]][[j]],each=buildsize[[i]][j]/buildsability[[i]][j])
+    builds[[i]][[j]][,2]=rep(rep(items[[i]][[j]],each=buildsize[[i]][j]/buildsability[[i]][j]/buildsitem[[i]][j]),buildsability[[i]][j])
+    builds[[i]][[j]][,3]=rep(rep(natures[[i]][[j]],each=buildsize[[i]][j]/buildsability[[i]][j]/buildsitem[[i]][j]/buildsnature[[i]][j]),buildsability[[i]][j]*buildsitem[[i]][j])
+    builds[[i]][[j]][,4]=rep(rep(strsplit(moves[[i]][[j]][1],",")[[1]],each=buildsize[[i]][j]/buildsability[[i]][j]/buildsitem[[i]][j]/buildsnature[[i]][j]/buildsmoves2[[i]][1,j]),buildsability[[i]][[j]]*buildsitem[[i]][[j]]*buildsnature[[i]][j])
+    if (!is.na(buildsmoves2[[i]][2,j])) {
+      builds[[i]][[j]][,5]=rep(rep(strsplit(moves[[i]][[j]][2],",")[[1]],each=buildsize[[i]][j]/buildsability[[i]][j]/buildsitem[[i]][j]/buildsnature[[i]][j]/buildsmoves2[[i]][1,j]/buildsmoves2[[i]][2,j]),buildsability[[i]][[j]]*buildsitem[[i]][[j]]*buildsnature[[i]][j]*buildsmoves2[[i]][1,j])
+    }
+    if (!is.na(buildsmoves2[[i]][3,j])) {
+      builds[[i]][[j]][,6]=rep(rep(strsplit(moves[[i]][[j]][3],",")[[1]],each=buildsize[[i]][j]/buildsability[[i]][j]/buildsitem[[i]][j]/buildsnature[[i]][j]/buildsmoves2[[i]][1,j]/buildsmoves2[[i]][2,j]/buildsmoves2[[i]][3,j]),buildsability[[i]][[j]]*buildsitem[[i]][[j]]*buildsnature[[i]][j]*buildsmoves2[[i]][1,j]*buildsmoves2[[i]][2,j])
+    }
+    if (!is.na(buildsmoves2[[i]][4,j])) {
+      builds[[i]][[j]][,7]=rep(rep(strsplit(moves[[i]][[j]][4],",")[[1]],each=buildsize[[i]][j]/buildsability[[i]][j]/buildsitem[[i]][j]/buildsnature[[i]][j]/buildsmoves2[[i]][1,j]/buildsmoves2[[i]][2,j]/buildsmoves2[[i]][3,j]/buildsmoves2[[i]][4,j]),buildsability[[i]][[j]]*buildsitem[[i]][[j]]*buildsnature[[i]][j]*buildsmoves2[[i]][1,j]*buildsmoves2[[i]][2,j]*buildsmoves2[[i]][3,j])
+    }
+    builds[[i]][[j]][,8]=evs[[i]][[j]][1]
+    builds[[i]][[j]][,9]=evs[[i]][[j]][2]
+    builds[[i]][[j]][,10]=evs[[i]][[j]][3]
+    builds[[i]][[j]][,11]=evs[[i]][[j]][4]
+    builds[[i]][[j]][,12]=evs[[i]][[j]][5]
+    builds[[i]][[j]][,13]=evs[[i]][[j]][6]
+    builds[[i]][[j]][,14]=ifelse(!is.na(ivs[[i]][[j]][1]),ivs[[i]][[j]][1],31)
+    builds[[i]][[j]][,15]=ifelse(!is.na(ivs[[i]][[j]][2]),ivs[[i]][[j]][2],31)
+    builds[[i]][[j]][,16]=ifelse(!is.na(ivs[[i]][[j]][3]),ivs[[i]][[j]][3],31)
+    builds[[i]][[j]][,17]=ifelse(!is.na(ivs[[i]][[j]][4]),ivs[[i]][[j]][4],31)
+    builds[[i]][[j]][,18]=ifelse(!is.na(ivs[[i]][[j]][5]),ivs[[i]][[j]][5],31)
+    builds[[i]][[j]][,19]=ifelse(!is.na(ivs[[i]][[j]][6]),ivs[[i]][[j]][6],31)
+  }
+}
+builds=lapply(builds,function(x){do.call(rbind,x)})
+for (i in 1:length(formats)) {
+  builds[[i]]=cbind(formats[i],builds[[i]])
+}
+builds=do.call(rbind,builds)
+```
+
+loop
+```{r}
+totbuilds=matrix(NA,nrow=0,ncol=20)
+for (b in 1:length(namelist)) {
+url=paste0("https://www.smogon.com/dex/dp/pokemon/",namelist[b],"/",collapse = "")
+bla=read_html(url,encoding = "ISO-8859-1")
+
+bla2=html_text(bla)
+bla3=strsplit(bla2,"\"format\":",fixed=TRUE)[[1]][-1]
+bla4=lapply(bla3,function(x){strsplit(x,",\"abilities\":",fixed=TRUE)[[1]][-1]})
+
+formats=unname(sapply(bla3,function(x){strsplit(x,",")[[1]][1]}))
+formats=gsub("\"","",formats,fixed = TRUE)
+if (any(formats=="LC")) {
+  bla4=bla4[-which(formats=="LC")]
+  formats=formats[-which(formats=="LC")]
+}
+if (any(formats=="Uber")&&length(formats)>1) {
+  bla4=bla4[-which(formats=="Uber")]
+  formats=formats[-which(formats=="Uber")]
+}
+if (length(bla4)==0) {
+  next
+}
+
+abilities=lapply(bla4,function(z){lapply(z,function(x){strsplit(x,",\"items\"",fixed=TRUE)[[1]]})})
+abilities=lapply(abilities,function(z){lapply(z,function(x){strsplit(x,",",fixed=TRUE)[[1]]})})
+abilities=lapply(abilities,function(z){lapply(z,function(x){gsub("\"","",gsub("[","",gsub("]","",x,fixed=TRUE),fixed=TRUE),fixed=TRUE)})})
+
+items=lapply(bla4,function(z){lapply(z,function(x){strsplit(x,",\"items\":",fixed=TRUE)[[1]][2]})})
+items=lapply(items,function(z){lapply(z,function(x){strsplit(x,",\"moveslots\":",fixed=TRUE)[[1]][1]})})
+items=lapply(items,function(z){lapply(z,function(x){strsplit(x,",",fixed=TRUE)[[1]]})})
+items=lapply(items,function(z){lapply(z,function(x){gsub("\"","",gsub("[","",gsub("]","",x,fixed=TRUE),fixed=TRUE),fixed=TRUE)})})
+
+moves=lapply(bla4,function(z){lapply(z,function(x){strsplit(x,",\"moveslots\":",fixed=TRUE)[[1]][2]})})
+moves=lapply(moves,function(z){lapply(z,function(x){strsplit(x,",\"evconfigs\":",fixed=TRUE)[[1]][1]})})
+moves=lapply(moves,function(z){lapply(z,function(x){strsplit(x,"\"],[\"",fixed=TRUE)[[1]]})})
+moves=lapply(moves,function(z){lapply(z,function(x){gsub("\"","",gsub("[[","",gsub("]]","",x,fixed=TRUE),fixed=TRUE),fixed=TRUE)})})
+
+evs=lapply(bla4,function(z){lapply(z,function(x){strsplit(x,",\"evconfigs\":",fixed=TRUE)[[1]][2]})})
+evs=lapply(evs,function(z){lapply(z,function(x){strsplit(x,",\"ivconfigs\":",fixed=TRUE)[[1]][1]})})
+evs=lapply(evs,function(z){lapply(z,function(x){strsplit(x,",\"",fixed=TRUE)[[1]]})})
+evs=lapply(evs,function(z){lapply(z,function(x){gsub("\"","",gsub("[{","",gsub("}]","",x,fixed=TRUE),fixed=TRUE),fixed=TRUE)})})
+evs=lapply(evs,function(z){lapply(z,function(x){unname(sapply(x,function(y){as.numeric(strsplit(y,":")[[1]][2])}))})})
+
+ivs=lapply(bla4,function(z){lapply(z,function(x){strsplit(x,",\"ivconfigs\":",fixed=TRUE)[[1]][2]})})
+ivs=lapply(ivs,function(z){lapply(z,function(x){strsplit(x,",\"natures\":",fixed=TRUE)[[1]][1]})})
+ivs=lapply(ivs,function(z){lapply(z,function(x){strsplit(x,",\"",fixed=TRUE)[[1]]})})
+ivs=lapply(ivs,function(z){lapply(z,function(x){gsub("\"","",gsub("[{","",gsub("}]","",x,fixed=TRUE),fixed=TRUE),fixed=TRUE)})})
+ivs=lapply(ivs,function(z){lapply(z,function(x){unname(sapply(x,function(y){as.numeric(strsplit(y,":")[[1]][2])}))})})
+
+natures=lapply(bla4,function(z){lapply(z,function(x){strsplit(x,",\"natures\":",fixed=TRUE)[[1]][2]})})
+natures=lapply(natures,function(z){lapply(z,function(x){strsplit(x,"}],\"credits\":",fixed=TRUE)[[1]][1]})})
+natures=lapply(natures,function(z){lapply(z,function(x){strsplit(x,"]},",fixed=TRUE)[[1]][1]})})
+natures=lapply(natures,function(z){lapply(z,function(x){strsplit(x,",",fixed=TRUE)[[1]]})})
+natures=lapply(natures,function(z){lapply(z,function(x){gsub("\"","",gsub("[","",gsub("]","",x,fixed=TRUE),fixed=TRUE),fixed=TRUE)})})
+
+buildsability=lapply(abilities,lengths)
+buildsmoves=lapply(moves,function(x){sapply(x,function(y){prod(sapply(y,function(z){str_count(z,",")+1}))})})
+buildsmoves2=lapply(moves,function(x){sapply(x,function(y){tmp=length(y);tmp2=unname(sapply(y,function(z){str_count(z,",")+1}));return(c(tmp2,rep(NA,4-tmp)))})})
+buildsitem=lapply(items,lengths)
+buildsnature=lapply(natures,lengths)
+buildsize=lapply(natures,lengths)
+for (i in 1:length(buildsability)) {
+  buildsize[[i]]=buildsability[[i]]*buildsmoves[[i]]*buildsitem[[i]]*buildsnature[[i]]
+}
+builds=natures
+for (i in 1:length(builds)) {
+  for (j in 1:length(builds[[i]])) {
+    builds[[i]][[j]]=as.data.frame(matrix(NA,nrow=buildsize[[i]][j],ncol=19))
+    builds[[i]][[j]][,1]=rep(abilities[[i]][[j]],each=buildsize[[i]][j]/buildsability[[i]][j])
+    builds[[i]][[j]][,2]=rep(rep(items[[i]][[j]],each=buildsize[[i]][j]/buildsability[[i]][j]/buildsitem[[i]][j]),buildsability[[i]][j])
+    builds[[i]][[j]][,3]=rep(rep(natures[[i]][[j]],each=buildsize[[i]][j]/buildsability[[i]][j]/buildsitem[[i]][j]/buildsnature[[i]][j]),buildsability[[i]][j]*buildsitem[[i]][j])
+    builds[[i]][[j]][,4]=rep(rep(strsplit(moves[[i]][[j]][1],",")[[1]],each=buildsize[[i]][j]/buildsability[[i]][j]/buildsitem[[i]][j]/buildsnature[[i]][j]/buildsmoves2[[i]][1,j]),buildsability[[i]][[j]]*buildsitem[[i]][[j]]*buildsnature[[i]][j])
+    if (!is.na(buildsmoves2[[i]][2,j])) {
+      builds[[i]][[j]][,5]=rep(rep(strsplit(moves[[i]][[j]][2],",")[[1]],each=buildsize[[i]][j]/buildsability[[i]][j]/buildsitem[[i]][j]/buildsnature[[i]][j]/buildsmoves2[[i]][1,j]/buildsmoves2[[i]][2,j]),buildsability[[i]][[j]]*buildsitem[[i]][[j]]*buildsnature[[i]][j]*buildsmoves2[[i]][1,j])
+    }
+    if (!is.na(buildsmoves2[[i]][3,j])) {
+      builds[[i]][[j]][,6]=rep(rep(strsplit(moves[[i]][[j]][3],",")[[1]],each=buildsize[[i]][j]/buildsability[[i]][j]/buildsitem[[i]][j]/buildsnature[[i]][j]/buildsmoves2[[i]][1,j]/buildsmoves2[[i]][2,j]/buildsmoves2[[i]][3,j]),buildsability[[i]][[j]]*buildsitem[[i]][[j]]*buildsnature[[i]][j]*buildsmoves2[[i]][1,j]*buildsmoves2[[i]][2,j])
+    }
+    if (!is.na(buildsmoves2[[i]][4,j])) {
+      builds[[i]][[j]][,7]=rep(rep(strsplit(moves[[i]][[j]][4],",")[[1]],each=buildsize[[i]][j]/buildsability[[i]][j]/buildsitem[[i]][j]/buildsnature[[i]][j]/buildsmoves2[[i]][1,j]/buildsmoves2[[i]][2,j]/buildsmoves2[[i]][3,j]/buildsmoves2[[i]][4,j]),buildsability[[i]][[j]]*buildsitem[[i]][[j]]*buildsnature[[i]][j]*buildsmoves2[[i]][1,j]*buildsmoves2[[i]][2,j]*buildsmoves2[[i]][3,j])
+    }
+    builds[[i]][[j]][,8]=evs[[i]][[j]][1]
+    builds[[i]][[j]][,9]=evs[[i]][[j]][2]
+    builds[[i]][[j]][,10]=evs[[i]][[j]][3]
+    builds[[i]][[j]][,11]=evs[[i]][[j]][4]
+    builds[[i]][[j]][,12]=evs[[i]][[j]][5]
+    builds[[i]][[j]][,13]=evs[[i]][[j]][6]
+    builds[[i]][[j]][,14]=ifelse(!is.na(ivs[[i]][[j]][1]),ivs[[i]][[j]][1],31)
+    builds[[i]][[j]][,15]=ifelse(!is.na(ivs[[i]][[j]][2]),ivs[[i]][[j]][2],31)
+    builds[[i]][[j]][,16]=ifelse(!is.na(ivs[[i]][[j]][3]),ivs[[i]][[j]][3],31)
+    builds[[i]][[j]][,17]=ifelse(!is.na(ivs[[i]][[j]][4]),ivs[[i]][[j]][4],31)
+    builds[[i]][[j]][,18]=ifelse(!is.na(ivs[[i]][[j]][5]),ivs[[i]][[j]][5],31)
+    builds[[i]][[j]][,19]=ifelse(!is.na(ivs[[i]][[j]][6]),ivs[[i]][[j]][6],31)
+  }
+}
+
+builds=lapply(builds,function(x){do.call(rbind,x)})
+for (i in 1:length(formats)) {
+  builds[[i]]=cbind(formats[i],builds[[i]])
+}
+builds=do.call(rbind,builds)
+
+totbuilds=rbind(totbuilds,cbind(namelist[b],builds))
+
+print(c(b,namelist[b]))
+}
+colnames(totbuilds)=c("Name","Format","Ability","Item","Nature","Move1","Move2","Move3","Move4","evhp","evatk","evdef","evspa","evspd","evspe","ivhp","ivatk","ivdef","ivspa","ivspd","ivspe")
+```
