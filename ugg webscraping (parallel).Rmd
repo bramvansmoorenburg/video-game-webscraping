@@ -29,7 +29,7 @@ splitvec=function(vec,n) {
 
 champion list
 ```{r}
-namelist=c("aatrox","ahri","akali","alistar","amumu","anivia","annie","ashe","aurelionsol","azir","blitzcrank","brand","braum","caitlyn","camille","cassiopeia","chogath","corki","darius","diana","drmundo","draven","ekko","elise","evelynn","ezreal","fiddlesticks","fiora","fizz","galio","gangplank","garen","gnar","gragas","hecarim","heimerdinger","illaoi","irelia","ivern","janna","jarvaniv","jax","jayce","jhin","jinx","kaisa","kalista","karma","karthus","kassadin","katarina","kayle","kayn","kennen","khazix","kindred","kled","kogmaw","leblanc","leesin","leona","lissandra","lucian","lulu","lux","malphite","malzahar","maokai","masteryi","missfortune","mordekaiser","morgana","nami","nasus","nautilus","neeko","nidalee","nocturne","nunu","olaf","orianna","ornn","pantheon","poppy","pyke","qiyana","quinn","rakan","rammus","reksai","renekton","rengar","riven","rumble","ryze","sejuani","senna","shaco","shen","shyvana","singed","sion","sivir","skarner","sona","swain","sylas","syndra","tahmkench","taliyah","talon","taric","teemo","thresh","tristana","trundle","tryndamere","twistedfate","twitch","udyr","urgot","varus","vayne","veigar","velkoz","vi","viktor","vladimir","volibear","warwick","wukong","xayah","xerath","xinzhao","yasuo","yorick","yuumi","zac","zed","ziggs","zilean","zoe","zyra")
+namelist=c("aatrox","ahri","akali","alistar","amumu","anivia","annie","aphelios","ashe","aurelionsol","azir","bard","blitzcrank","brand","braum","caitlyn","camille","cassiopeia","chogath","corki","darius","diana","drmundo","draven","ekko","elise","evelynn","ezreal","fiddlesticks","fiora","fizz","galio","gangplank","garen","gnar","gragas","graves","hecarim","heimerdinger","illaoi","irelia","ivern","janna","jarvaniv","jax","jayce","jhin","jinx","kaisa","kalista","karma","karthus","kassadin","katarina","kayle","kayn","kennen","khazix","kindred","kled","kogmaw","leblanc","leesin","leona","lissandra","lucian","lulu","lux","malphite","malzahar","maokai","masteryi","missfortune","mordekaiser","morgana","nami","nasus","nautilus","neeko","nidalee","nocturne","nunu","olaf","orianna","ornn","pantheon","poppy","pyke","qiyana","quinn","rakan","rammus","reksai","renekton","rengar","riven","rumble","ryze","sejuani","senna","sett","shaco","shen","shyvana","singed","sion","sivir","skarner","sona","soraka","swain","sylas","syndra","tahmkench","taliyah","talon","taric","teemo","thresh","tristana","trundle","tryndamere","twistedfate","twitch","udyr","urgot","varus","vayne","veigar","velkoz","vi","viktor","vladimir","volibear","warwick","wukong","xayah","xerath","xinzhao","yasuo","yorick","yuumi","zac","zed","ziggs","zilean","zoe","zyra")
 splnames=splitvec(namelist,ncores)
 ```
 
@@ -39,10 +39,17 @@ uggfunc=function(namevec) {
   library(rvest)
   champtabl=data.frame(name=NA,topbplayrate=NA,jglbplayrate=NA,midbplayrate=NA,botbplayrate=NA,supbplayrate=NA,topbwinrate=NA,jglbwinrate=NA,midbwinrate=NA,botbwinrate=NA,supbwinrate=NA,toprplayrate=NA,jglrplayrate=NA,midrplayrate=NA,botrplayrate=NA,suprplayrate=NA,toprwinrate=NA,jglrwinrate=NA,midrwinrate=NA,botrwinrate=NA,suprwinrate=NA)[-1,]
   for (i in namevec) {
-    url=paste0("https://u.gg/lol/champions/",i,"/build/",collapse="") #?queueType=normal_blind_5x5
-    page=read_html(url,encoding = "ISO-8859-1")
+    url=paste0("https://u.gg/lol/champions/",i,"/build/?queueType=normal_blind_5x5",collapse="") #?queueType=normal_blind_5x5
+    page=try(read_html(url,encoding = "ISO-8859-1"))
+    for (a in 1:10) {
+      if (class(page)[1]!="try-error") {
+        break
+      }
+      Sys.sleep(1)
+      page=try(read_html(url,encoding = "ISO-8859-1"))
+    }
     page2=html_text(page)
-    roles=strsplit(page2,"world_silver_")[[1]][2:6] #world_silver_ or overall_
+    roles=strsplit(page2,"world_overall_")[[1]][7:11] #world_silver_ or overall_
     roles=roles[c(4,1,5,3,2)]
     
     corebuild=lapply(roles,function(x){strsplit(x,"rec_skills")[[1]][1]})
@@ -75,20 +82,26 @@ clu=makeCluster(ncores)
 tabl=parLapply(clu,splnames,uggfunc)
 stopCluster(clu)
 tabl=do.call(rbind,tabl)
+apply(tabl[,1:5],2,function(x){sort(na.omit(x))[round(0.8*sum(!is.na(x)))]})
 ```
 
 role tables
 ```{r}
 threshold=1e3
-itabltop=tabl[tabl$topiplayrate>=threshold,]
-itabljgl=tabl[tabl$jgliplayrate>=threshold,]
-itablmid=tabl[tabl$midiplayrate>=threshold,]
-itablbot=tabl[tabl$botiplayrate>=threshold,]
-itablsup=tabl[tabl$supiplayrate>=threshold,]
+itabltop=tabl[!is.na(tabl$topiplayrate)&tabl$topiplayrate>=threshold,]
+itabljgl=tabl[!is.na(tabl$jgliplayrate)&tabl$jgliplayrate>=threshold,]
+itablmid=tabl[!is.na(tabl$midiplayrate)&tabl$midiplayrate>=threshold,]
+itablbot=tabl[!is.na(tabl$botiplayrate)&tabl$botiplayrate>=threshold,]
+itablsup=tabl[!is.na(tabl$supiplayrate)&tabl$supiplayrate>=threshold,]
 
-rtabltop=tabl[tabl$toprplayrate>=threshold,]
-rtabljgl=tabl[tabl$jglrplayrate>=threshold,]
-rtablmid=tabl[tabl$midrplayrate>=threshold,]
-rtablbot=tabl[tabl$botrplayrate>=threshold,]
-rtablsup=tabl[tabl$suprplayrate>=threshold,]
+rtabltop=tabl[!is.na(tabl$toprplayrate)&tabl$toprplayrate>=threshold,]
+rtabljgl=tabl[!is.na(tabl$jglrplayrate)&tabl$jglrplayrate>=threshold,]
+rtablmid=tabl[!is.na(tabl$midrplayrate)&tabl$midrplayrate>=threshold,]
+rtablbot=tabl[!is.na(tabl$botrplayrate)&tabl$botrplayrate>=threshold,]
+rtablsup=tabl[!is.na(tabl$suprplayrate)&tabl$suprplayrate>=threshold,]
+```
+
+```{r}
+c(max(rtabltop[,16],na.rm = TRUE),max(rtabljgl[,17],na.rm = TRUE),max(rtablmid[,18],na.rm = TRUE),max(rtablbot[,19],na.rm = TRUE),max(rtablsup[,20],na.rm = TRUE))
+gc()
 ```
